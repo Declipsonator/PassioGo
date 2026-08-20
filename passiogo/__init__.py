@@ -2,28 +2,46 @@ import json
 import requests
 import websocket
 
+import random
+from datetime import timedelta, datetime, timezone
+from typing import Optional, List, Tuple
+
 BASE_URL = "https://passiogo.com"
 
 
 ### Helper Functions ###
 
 def toIntInclNone(toInt):
-	if toInt == None:
+	"""
+	Cast to int, returning None if input is None
+	"""
+	if toInt is None:
 		return toInt
-	return(int(toInt))
+	return int(toInt)
 
-	
-def sendApiRequest(url, body):
-	
+def convertToUnixEta(eta):
+	return (datetime.now(timezone.utc) + timedelta(seconds=eta)).timestamp()
+
+def toFloatInclNone(toFloat):
+	"""
+	Cast to float, returning None if input is None
+	"""
+	if toFloat is None:
+		return toFloat
+	return float(toFloat)
+
+def sendApiRequest(url, body = None):
 	# Send Request
-	response = requests.post(url, json = body)
+	if body is None:
+		response = requests.get(url)
+	else:
+		response = requests.post(url, json = body)
 	
 	try:
 		# Handle JSON Response
 		response = response.json()
 	except Exception as e:
 		raise Exception(f"Error converting API response to JSON! Here is the response received: {response}")
-		return None
 	
 	
 	# Handle API Error
@@ -33,7 +51,7 @@ def sendApiRequest(url, body):
 	):
 		raise Exception(f"Error in Response! Here is the received response: {response}")
 	
-	return(response)
+	return response
 
 
 
@@ -124,7 +142,7 @@ class TransportationSystem:
 		self,
 		appVersion = 1,
 		amount = 1
-	) -> list["Route"]:
+	) -> Optional[list["Route"]]:
 		"""
 		Obtains every route for the selected system.
 		=========
@@ -135,8 +153,8 @@ class TransportationSystem:
 			0: Not Valid, Gives Error
 			>=2: Returns all routes for given system in addition to unrelated routes. Exact methodology unsure.
 		"""
-		
-		
+
+
 		# Initialize & Send Request
 		url = BASE_URL+f"/mapGetData.php?getRoutes={appVersion}"
 		body = {
@@ -146,8 +164,8 @@ class TransportationSystem:
 		routes = sendApiRequest(url, body)
 		
 		# Handle Request Error
-		if(routes == None):
-			return(None)
+		if routes is None:
+			return None
 		
 		
 		# Handle Differing Response Format
@@ -185,15 +203,35 @@ class TransportationSystem:
 				systemId = int(route["userId"]),
 				system = self
 			))
+
+		return allRoutes
+
+	
+	def getRouteById(
+		self,
+		routeId: str,
+		appVersion: int = 1,
+		amount: int = 1
+	) -> Optional["Route"]:
+		"""
+		Returns a Route object corresponding to the provided ID.
+		"""
+		allRoutes = self.getRoutes(
+			appVersion = appVersion,
+			amount = amount
+		)
 		
-		return(allRoutes)
+		for route in allRoutes:
+			if str(route.id) == str(routeId):
+				return route
+		return None
 	
 	def getStops(
 		self,
 		appVersion = 2,
 		sA = 1,
 		raw = False
-	) -> list["Stop"]:
+	) -> Optional[list["Stop"]]:
 		"""
 		Obtains all stop for the given system.
 		=========
@@ -203,8 +241,8 @@ class TransportationSystem:
 			1: Returns all stops for the given system
 			>=2: Returns unrelated stops as well
 		"""
-		
-		
+
+
 		# Initialize & Send Request
 		url = BASE_URL+"/mapGetData.php?getStops="+str(appVersion)
 		body = {
@@ -215,18 +253,18 @@ class TransportationSystem:
 		
 		# Return Raw Response
 		if raw:
-			return(stops)
+			return stops
 		
 		# Handle Request Error
-		if(stops == None):
-			return(None)
+		if stops is None:
+			return None
 		
 		# Handle Empty Routes
-		if stops["routes"] == []:
+		if not stops["routes"]:
 			stops["routes"] = {}
 		
 		# Handle Empty Stops
-		if stops["stops"] == []:
+		if not stops["stops"]:
 			stops["stops"] = {}
 		
 		
@@ -269,15 +307,37 @@ class TransportationSystem:
 				radius = stop["radius"],
 				system = self,
 			))
+
+		return allStops
+
+	
+	def getStopById(
+		self,
+		stopId: str,
+		appVersion = 2,
+		sA = 1,
+		raw = False,
+	) -> Optional["Stop"]:
+		"""
+		Returns the Stop object corresponding to the passed ID.
+		"""
+		allStops = self.getStops(
+			appVersion = appVersion,
+			sA = sA,
+			raw = raw,
+		)
 		
-		return(allStops)
+		for stop in allStops:
+			if str(stop.id) == str(stopId):
+				return stop
+		return None
 	
 	def getSystemAlerts(
 		self,
 		appVersion = 1,
 		amount = 1,
 		routesAmount = 0
-	) -> list["SystemAlert"]:
+	) -> Optional[list["SystemAlert"]]:
 		"""
 		Gets all system alerts for the selected system.
 		=========
@@ -286,7 +346,7 @@ class TransportationSystem:
 			0: Error
 			>=1: Valid
 		"""
-		
+
 		
 		# Initialize & Send Request
 		url = BASE_URL+f"/goServices.php?getAlertMessages={appVersion}"
@@ -298,8 +358,8 @@ class TransportationSystem:
 		errorMsgs = sendApiRequest(url, body)
 		
 		# Handle Request Error
-		if(errorMsgs == None):
-			return(None)
+		if errorMsgs is None:
+			return None
 		
 		# Create SystemAlert Objects
 		allAlerts = []
@@ -335,13 +395,13 @@ class TransportationSystem:
 				fromOk = errorMsg["fromOk"],
 				toOk = errorMsg["toOk"],
 			))
-		
-		return(allAlerts)
+
+		return allAlerts
 
 	def getVehicles(
 		self,
 		appVersion = 2
-	) -> list["Vehicle"]:
+	) -> Optional[list["Vehicle"]]:
 		"""
 		Gets all currently running buses.
 		=========
@@ -350,7 +410,7 @@ class TransportationSystem:
 			0: Error
 			>=1: Valid
 		"""
-		
+
 		
 		# Initialize & Send Request
 		url = BASE_URL+"/mapGetData.php?getBuses="+str(appVersion)
@@ -361,8 +421,8 @@ class TransportationSystem:
 		vehicles = sendApiRequest(url, body)
 		
 		# Handle Request Error
-		if(vehicles == None):
-			return(None)
+		if vehicles is None :
+			return None
 		
 		allVehicles = []
 		for vehicleId, vehicle in vehicles["buses"].items():
@@ -394,22 +454,37 @@ class TransportationSystem:
 				more = vehicle["more"],
 				tripId = vehicle["tripId"],
 			))
-		
-		return(allVehicles)
+
+		return allVehicles
+
+	def getVehicleById(
+			self,
+			vehicleId,
+			appVersion: int = 1
+	) -> Optional["Vehicle"]:
+		"""
+		Returns a Vehicle object corresponding to the provided ID.
+		"""
+
+		vehicles = self.getVehicles(appVersion = appVersion)
+		for vehicle in vehicles:
+			if int(vehicle.id) == vehicleId:
+				return vehicle
+		return None
 
 
 def getSystems(
 	appVersion = 2,
 	sortMode = 1,
 ) -> list["TransportationSystem"]:
-	'''
+	"""
 	Gets all systems. Returns a list of TransportationSystem.
 	
 	sortMode: Unknown
 	appVersion:
 		<2: Error
 		2: Valid
-	'''
+	"""
 	
 	
 	# Initialize & Send Request
@@ -418,8 +493,8 @@ def getSystems(
 	
 	
 	# Handle Request Error
-	if(systems == None):
-		return([])
+	if systems is None:
+		return []
 	
 	
 	allSystems = []
@@ -453,14 +528,14 @@ def getSystems(
 		))
 	
 	
-	return(allSystems)
+	return allSystems
 
 
 def getSystemFromID(
 	id,
 	appVersion = 2,
 	sortMode = 1,
-) -> TransportationSystem:
+) -> Optional[TransportationSystem]:
 	
 	# Check Input Type
 	assert type(id) == int, "`id` must be of type int"
@@ -494,14 +569,14 @@ class Route:
 	
 	def __init__(
 		self,
-		id: int,
+		id: str,
 		groupId: int = None,
 		groupColor: str = None,
 		name: str = None,
 		shortName: str = None,
 		nameOrig: str = None,
 		fullname: str = None,
-		myid: int = None,
+		myid: str = None,
 		mapApp: bool = None,
 		archive: bool = None,
 		goPrefixRouteName: bool = None,
@@ -516,22 +591,23 @@ class Route:
 		systemId: id = None,
 		system: TransportationSystem = None,
 	):
-		self.id = id
-		self.groupId = groupId
+		self.id = toIntInclNone(id)
+		self.groupId = toIntInclNone(groupId)
 		self.groupColor = groupColor
 		self.name = name
 		self.shortName = shortName
 		self.nameOrig = nameOrig
 		self.fullname = fullname
 		self.myid = myid
-		self.mapApp = mapApp
-		self.archive = archive
-		self.goPrefixRouteName = goPrefixRouteName
-		self.goShowSchedule = goShowSchedule
-		self.outdated = outdated
+		self.mapApp = bool(toIntInclNone(mapApp))
+		self.archive = bool(toIntInclNone(archive))
+		self.goPrefixRouteName = bool(toIntInclNone(goPrefixRouteName))
+		self.goShowSchedule = bool(toIntInclNone(goShowSchedule))
+		self.outdated = bool(toIntInclNone(outdated))
 		self.distance = distance
-		self.latitude = latitude
-		self.longitude = longitude
+		self.latitude = toFloatInclNone(latitude)
+		self.longitude = toFloatInclNone(longitude)
+		self.timezone = timezone
 		self.serviceTime = serviceTime
 		self.serviceTimeShort = serviceTimeShort
 		self.systemId = systemId
@@ -542,6 +618,7 @@ class Route:
 		"""
 		Gets the list of stops for this route and stores it as an argument
 		"""
+
 		stopsForRoute = []
 		allStops = self.system.getStops()
 		
@@ -551,8 +628,21 @@ class Route:
 				self.id in list(stop.routesAndPositions.keys()) or \
 				self.groupId in list(stop.routesAndPositions.keys()):
 				stopsForRoute.append(stop)
-		
-		return(stopsForRoute)
+
+		return stopsForRoute
+
+
+	def getVehicles(
+			self,
+			appVersion: int = 1
+	) -> List["Vehicle"]:
+		"""
+		Gets all vehicles following this route
+		"""
+
+		vehiclesForSystem = self.system.getVehicles(appVersion = appVersion)
+		vehiclesForRoute = [vehicle for vehicle in vehiclesForSystem if str(vehicle.routeId) == self.myid]
+		return vehiclesForRoute
 
 
 ### Stops ###
@@ -581,6 +671,52 @@ class Stop:
 		self.longitude = longitude
 		self.radius = radius
 		self.system = system
+
+	def getNextVehicle(
+			self,
+			returnInUTC: bool = False,
+	) -> Optional[
+			Tuple[float, Optional["Vehicle"]]
+		]:
+		"""
+		Gets the next vehicle that will arrive to this stop
+		"""
+
+		etas = self.getEtas(returnInUTC = returnInUTC)
+		if not etas:
+			return None
+
+		# Generally operates in O(1) as etas come sorted by API
+		return min(etas, key = lambda x : x[0])
+
+	def getEtas(
+			self,
+			returnInUTC: bool = False
+	) -> Optional[
+			List[
+				Tuple[float, Optional["Vehicle"]]
+			]
+		]:
+		"""
+		Returns a list of all vehicles that stop at this stop,
+		along with the seconds until their arrival in the form:
+		(seconds, <Vehicle>), or optionally (timestampUTC, <Vehicle>) with the
+		returnInUtc argument.
+		"""
+
+		etaUrl = f'{BASE_URL}/mapGetData.php?eta=3&deviceId={random.randint(10000000,99999999)}&stopIds={self.id}'
+		data = sendApiRequest(etaUrl)["ETAs"]
+		vehicles = []
+		if str(self.id) not in data:
+			return vehicles
+		for vehicle in data[str(self.id)]:
+			if vehicle["etaR"]: #etaR is "" when eta is unavailable
+				if returnInUTC:
+					eta = convertToUnixEta(vehicle["secondsSpent"])
+				else:
+					eta = vehicle["secondsSpent"]
+			vehicles.append((eta, self.system.getVehicleById(int(vehicle["busId"]))))
+		return vehicles
 	
 
 ### System Alerts ###
@@ -620,34 +756,34 @@ class SystemAlert:
 		toOk: bool = None,
 	):
 		self.id = id
-		self.systemId = systemId
+		self.systemId = toIntInclNone(systemId)
 		self.system = system
 		self.routeId = routeId
 		self.name = name
 		self.html = html
-		self.archive = archive
-		self.important = important
+		self.archive = bool(toIntInclNone(archive))
+		self.important = bool(toIntInclNone(important))
 		self.dateTimeCreated = dateTimeCreated
 		self.dateTimeFrom = dateTimeFrom
 		self.dateTimeTo = dateTimeTo
-		self.asPush = asPush
-		self.gtfs = gtfs
-		self.gtfsAlertCauseId = gtfsAlertCauseId
-		self.gtfsAlertEffectId = gtfsAlertEffectId
+		self.asPush = bool(toIntInclNone(asPush))
+		self.gtfs = bool(toIntInclNone(gtfs))
+		self.gtfsAlertCauseId = bool(toIntInclNone(gtfsAlertCauseId))
+		self.gtfsAlertEffectId = bool(toIntInclNone(gtfsAlertEffectId))
 		self.gtfsAlertUrl = gtfsAlertUrl
 		self.gtfsAlertHeaderText = gtfsAlertHeaderText
 		self.gtfsAlertDescriptionText = gtfsAlertDescriptionText
 		self.routeGroupId = routeGroupId
 		self.createdUtc = createdUtc
-		self.authorId = authorId
+		self.authorId = toIntInclNone(authorId)
 		self.author = author
 		self.updated = updated
-		self.updateAuthorId = updateAuthorId
+		self.updateAuthorId = toIntInclNone(updateAuthorId)
 		self.updateAuthor = updateAuthor
 		self.createdF = createdF
 		self.fromF = fromF
-		self.fromOk = fromOk
-		self.toOk = toOk
+		self.fromOk = bool(toIntInclNone(fromOk))
+		self.toOk = bool(toIntInclNone(toOk))
 
 
 
@@ -683,14 +819,13 @@ class Vehicle:
 		self.routeName = routeName
 		self.color = color
 		self.created = created
-		self.longitude = latitude
+		self.latitude = toFloatInclNone(latitude)
+		self.longitude = toFloatInclNone(longitude)
 		self.speed = speed
 		self.paxLoad = paxLoad
-		self.outOfService = outOfService
+		self.outOfService = bool(outOfService)
 		self.more = more
 		self.tripId = tripId
-
-
 
 
 ### Live Timings ###
@@ -705,7 +840,7 @@ def launchWS():
 	wsapp = websocket.WebSocketApp(
 		uri,
 		on_open = subscribeWS,
-		#on_message = ...,
+		on_message = on_message,
 		on_error = handleWsError,
 		on_close = handleWsClose
 	)
@@ -722,19 +857,28 @@ def handleWsError(wsapp, error):
 def handleWsClose(wsapp, close_status_code, close_msg):
 	wsapp.close()
 
+def on_message(wsapp, message):
+	message = json.loads(message)
+	print(message)
+	#Pretty output
+	# print(f'{message["routeBlock"]}({message["busId"]}) stopping {getSystemFromID(...).getStopById(message["stopId"]).__dict__["name"]}. Lat: {message["latitude"]}, Long: {message["longitude"]} at {message["speed"]} speed')
 
 def subscribeWS(
 	wsapp,
 	userId
 ):
-	
+	#comment out field to see all options
 	subscriptionMsg = {
 		"subscribe":"location",
 		"userId":[userId],
 		"field":[
 			"busId",
+			"routeStopId",
+			"routeBlock",
+			"stopId",
 			"latitude",
 			"longitude",
+			"speed",
 			"course",
 			"paxLoad",
 			"more"
